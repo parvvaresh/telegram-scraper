@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Session files (contain auth tokens — do not commit)
+session/*.session
+
+# Output and temp data
+output/
+logs/
+
+# Environment / IDE
+.env
+.venv/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes
+clickhouse_data/
+clickhouse_logs/

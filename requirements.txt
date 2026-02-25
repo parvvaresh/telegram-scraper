@@ -1,0 +1,8 @@
+telethon>=1.40.0
+jdatetime
+salnama
+beautifulsoup4>=4.13.0
+sqlalchemy>=2.0.0
+clickhouse-sqlalchemy
+requests>=2.31.0
+lxml

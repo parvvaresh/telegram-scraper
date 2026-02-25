@@ -1,0 +1,72 @@
+# ============================================================
+# Docker Compose for Daily Telegram Scraper
+# ============================================================
+#
+# Services:
+#   - clickhouse: ClickHouse database for storing posts, comments, reactions
+#   - app: The Telegram scraper application
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose logs -f app        # Follow scraper logs
+#   docker compose run --rm app python3 session/create_esssion.py  # Create sessions interactively
+#   docker compose down               # Stop all services
+# ============================================================
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: telegram_clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    environment:
+      CLICKHOUSE_USER: reza
+      CLICKHOUSE_PASSWORD: "1234"
+      CLICKHOUSE_DB: vazir1
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram_scraper
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      # Override ClickHouse host to point to the Docker service
+      CLICKHOUSE_HTTP_URL: "http://clickhouse:8123/"
+      CLICKHOUSE_USER: reza
+      CLICKHOUSE_PASSWORD: "1234"
+      CLICKHOUSE_DB: vazir1
+    volumes:
+      # Persist session files so you don't need to re-authenticate
+      - ./session:/app/session
+      # Persist input configuration
+      - ./input:/app/input
+      # Persist output data
+      - ./output:/app/output
+      # Persist logs
+      - ./logs:/app/logs
+      # Mount config for easy editing without rebuilding
+      - ./config.py:/app/config.py
+      - ./fetch_tools/configDB.py:/app/fetch_tools/configDB.py
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
