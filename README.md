@@ -100,7 +100,13 @@ pip install -r requirements.txt
 
 ### 3. Configure Telegram API Credentials
 
-Edit `config.py` with your API credentials from [my.telegram.org](https://my.telegram.org):
+Copy the template and fill your values from [my.telegram.org](https://my.telegram.org):
+
+```bash
+cp config.template.py config.py
+```
+
+Then edit `config.py`:
 
 ```python
 api_id = 123456
