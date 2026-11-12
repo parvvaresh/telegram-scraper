@@ -1,9 +1,14 @@
+import os
+import sys
+
+# Allow running as `python3 session/create_esssion.py` from the repo root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from telethon.sync import TelegramClient
 from telethon import connection
 from telethon.errors import SessionPasswordNeededError
 
-from config import api_hash, api_id, MTPROTO_PROXY, NUM_SESSIONS
+from config import api_hash, api_id, MTPROTO_PROXY_TUPLE, NUM_SESSIONS
 
 
 
@@ -12,17 +17,11 @@ for i in range(NUM_SESSIONS):
     print(f"\n📦 Creating session: {session_name}")
 
     # Create the Telegram client with MTProto proxy
-    client = TelegramClient(
-        session_name,
-        api_id,
-        api_hash,
-        connection=connection.ConnectionTcpMTProxyAbridged,  # ✅ Correct class
-        proxy=(
-            MTPROTO_PROXY['server'],
-            MTPROTO_PROXY['port'],
-            MTPROTO_PROXY['secret']  # Convert secret string to bytes
-        )
+    proxy_kwargs = (
+        {"connection": connection.ConnectionTcpMTProxyAbridged, "proxy": MTPROTO_PROXY_TUPLE}
+        if MTPROTO_PROXY_TUPLE else {}
     )
+    client = TelegramClient(session_name, api_id, api_hash, **proxy_kwargs)
 
     with client:
         try:

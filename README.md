@@ -16,6 +16,83 @@ A modular, high-performance Telegram channel scraper that collects **posts**, **
 - **Rate-Limit Handling:** Gracefully handles Telegram's `FloodWaitError` with automatic retry and backoff.
 - **Proxy Support:** Supports both HTTP proxies (for web scraping) and MTProto proxies (for Telegram API).
 - **Modular Architecture:** Clean separation of concerns across fetch tools, database models, workers, and configuration.
+- **Web Control Panel (React):** Configure everything, start/stop runs, watch live progress and logs, browse run history and the scraped data — see below.
+
+---
+
+## Web Control Panel
+
+A React + FastAPI panel for configuring the scraper and watching it work. The UI is in Persian (RTL) and follows the system light/dark theme.
+
+| Page | What it does |
+|---|---|
+| **Dashboard** | DB totals, readiness checklist (channels, ClickHouse, API keys, sessions, proxies), posts-per-day chart, quick start, recent runs |
+| **Run & Monitor** | Start/stop a run (full / posts only / comments only), live progress per phase, channels being scraped right now, per-worker progress & Flood waits, recent warnings/errors, live log viewer |
+| **History** | Every past run with status, duration and stats (channels ✓/✗, posts, comments, reactions, errors); click a run to open its details and logs |
+| **Channels** | Edit `input/channels.json`, see the normalized names the scraper will use |
+| **Settings** | Telegram API, HTTP & MTProto proxies, ClickHouse (connection test + create tables), scraping parameters |
+| **Data** | Latest posts and comments, per-channel table, top reactions — straight from ClickHouse |
+| **Scrape Preview** | Fetches one `t.me/s/` page exactly like the post scraper does and shows the parsed posts — nothing is written to the DB |
+
+### Screenshots
+
+**Dashboard**
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Run & Monitor** — live progress, issues and log of a run
+
+![Run & Monitor](docs/screenshots/run.png)
+
+**History**
+
+![History](docs/screenshots/history.png)
+
+**Settings**
+
+![Settings](docs/screenshots/settings.png)
+
+**Channels**
+
+![Channels](docs/screenshots/channels.png)
+
+**Scrape Preview**
+
+![Scrape Preview](docs/screenshots/preview.png)
+
+### Run the panel
+
+```bash
+pip install -r requirements.txt
+
+# build the React frontend once (Node 18+)
+cd frontend && npm install && npm run build && cd ..
+
+# start the panel (from the repository root)
+python3 -m web
+# → http://localhost:8000
+```
+
+| Env var | Default | Description |
+|---|---|---|
+| `WEB_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` to expose it) |
+| `WEB_PORT` | `8000` | Port |
+| `WEB_USER` / `WEB_PASSWORD` | `admin` / *(empty)* | Enables HTTP basic auth when `WEB_PASSWORD` is set — **set it before exposing the panel**, it can edit credentials and start processes |
+| `SCRAPER_SETTINGS` | `input/settings.json` | Alternative settings file path |
+
+**Frontend development** (hot reload, `/api` is proxied to the panel on `:8000`):
+
+```bash
+python3 -m web                     # terminal 1
+cd frontend && npm run dev         # terminal 2 → http://localhost:5173
+```
+
+### How runs work
+
+- A run started from the panel executes `get_posts.py` and then `get_comments_reactions.py --mode subprocess` as child processes (no tmux needed); **Stop** terminates the whole process group.
+- Each run gets a folder `logs/runs/<run-id>/` with `run.json` (status, params, summary), `posts.log`, `comments.log` and `workers/worker_N.log`. The panel derives live progress from these logs, and the History page reads them back.
+- Starting the posts phase deletes old `output/batches/batch_*.json`, so the comments phase only processes posts from the current run.
+- If the panel restarts while a run is in progress, it re-attaches to the still-running process.
 
 ---
 
@@ -23,19 +100,29 @@ A modular, high-performance Telegram channel scraper that collects **posts**, **
 
 ```
 daily_telegram/
-├── config.py                          # Telegram API credentials, proxy settings, session count
+├── settings.py                        # Settings loader: defaults < env vars < input/settings.json
+├── config.py                          # Exposes Telegram/proxy settings (reads settings.py)
 ├── get_posts.py                       # Main entry point: batch post scraper (multiprocessing + threading)
 ├── get_comments_reactions.py          # Splits work & launches tmux workers for comments/reactions
 ├── run_full_scraper.sh                # Shell script to run post scraper then comments/reactions sequentially
 ├── requirements.txt                   # Python dependencies
 ├── input/
-│   └── channels.json                  # JSON file with list of Telegram channel URLs
+│   ├── channels.json                  # JSON file with list of Telegram channel URLs
+│   └── settings.json                  # Your settings (created by the panel, git-ignored)
+├── web/                               # Control panel backend (FastAPI): python3 -m web
+│   ├── app.py                         # REST API + serves the built frontend
+│   ├── runner.py                      # Starts/stops runs, records them in logs/runs/
+│   ├── progress.py                    # Turns run logs into live progress numbers
+│   └── clickhouse.py                  # Read-only queries for the dashboard/data pages
+├── frontend/                          # Control panel UI (React + Vite)
+│   └── src/pages/                     # Dashboard, Run, History, Channels, Settings, Data, Preview
+├── docs/screenshots/                  # README screenshots
 ├── fetch_tools/
 │   ├── posts.py                       # HTTP-based post scraper (t.me/s/ pages), parses HTML, inserts to ClickHouse
 │   ├── comments.py                    # Async Telethon-based comment fetcher
 │   ├── reactions.py                   # Async Telethon-based reaction fetcher
 │   ├── utils.py                       # ClickHouse batch insertion, HTML parsing, holiday checking, media type detection
-│   └── configDB.py                    # ClickHouse connection settings (URL, auth, DB name, HTTP headers)
+│   └── configDB.py                    # Exposes ClickHouse settings (reads settings.py)
 ├── db/
 │   ├── db.py                          # SQLAlchemy engine & session for ClickHouse
 │   └── models.py                      # SQLAlchemy models: BufferPost, BufferComment, BufferReaction
@@ -47,8 +134,8 @@ daily_telegram/
 │   └── telegram_*.session             # Auto-generated Telethon session files
 ├── output/
 │   ├── batches/                       # Batch JSON files with channel → msgid mappings
-│   └── tmp_batches/                   # Temporary worker batch files
-└── logs/                              # Log files from scraper runs
+│   └── tmp_batches/                   # Per-worker batch files (worker_batch_N.txt)
+└── logs/                              # Log files; panel runs live in logs/runs/<run-id>/
 ```
 
 ---
@@ -98,53 +185,30 @@ cd daily_telegram
 pip install -r requirements.txt
 ```
 
-### 3. Configure Telegram API Credentials
+### 3. Configure Telegram, Proxies and ClickHouse
 
-Copy the template and fill your values from [my.telegram.org](https://my.telegram.org):
+All settings live in **`input/settings.json`** (git-ignored, since it holds credentials). The easiest way to edit them is the **Settings** page of the [web panel](#web-control-panel). You can also write the file by hand. Any key you leave out falls back to the defaults in `settings.py`:
 
-```bash
-cp config.template.py config.py
-```
-
-Then edit `config.py`:
-
-```python
-api_id = 123456
-api_hash = 'your_api_hash_here'
-```
-
-### 4. Configure Proxy Settings
-
-In `config.py`, update the HTTP and MTProto proxy settings:
-
-```python
-# HTTP Proxy (for web scraping)
-HTTP_PROXY_HOST = 'your_proxy_ip'
-HTTP_PROXY_PORT = 8888
-HTTP_PROXY_USER = 'user'
-HTTP_PROXY_PASS = 'password'
-
-# MTProto Proxy (for Telegram API)
-MTPROTO_PROXY = {
-    'server': 'your_proxy_ip',
-    'port': 443,
-    'secret': 'your_hex_secret'
+```json
+{
+  "telegram":      { "api_id": 123456, "api_hash": "your_api_hash", "timeout": 30, "num_sessions": 4 },
+  "http_proxy":    { "host": "your_proxy_ip", "port": 8888, "user": "user", "password": "password" },
+  "mtproto_proxy": { "server": "your_proxy_ip", "port": 443, "secret": "your_hex_secret" },
+  "clickhouse":    { "url": "http://localhost:8123/", "user": "your_user", "password": "your_password", "database": "vazir1" },
+  "posts":         { "days": 1, "batch_size": 1000, "max_parallel_batches": 4, "max_threads": 64,
+                     "max_pages": 500, "delay_min": 1.0, "delay_max": 2.5, "http_max_retries": 5, "insert_batch_size": 50 },
+  "comments":      { "limit": 36, "num_workers": 10 }
 }
 ```
 
-### 5. Configure ClickHouse
+- `api_id` / `api_hash` come from [my.telegram.org](https://my.telegram.org).
+- Leave the HTTP proxy `host` empty to scrape directly; leave the MTProto `server` empty to let Telethon connect directly.
+- `CLICKHOUSE_HTTP_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_DB` environment variables seed the ClickHouse values (values in `settings.json` win).
+- `comments.num_workers` is capped at the number of session files: Telethon sessions are SQLite files and cannot be shared by concurrent processes.
 
-Edit `fetch_tools/configDB.py`:
+### 4. Create ClickHouse Tables
 
-```python
-CLICKHOUSE_HTTP_URL = "http://localhost:8123/"
-CLICKHOUSE_AUTH = ("your_user", "your_password")
-DB_NAME = "your_database"
-```
-
-### 6. Create ClickHouse Tables
-
-Connect to ClickHouse and create the required database and tables:
+Click **Create tables** on the panel's Settings page, or connect to ClickHouse and create them yourself:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS vazir1;
@@ -212,9 +276,9 @@ CREATE TABLE vazir1.telegram_reactions_buffer AS vazir1.telegram_reactions
 ENGINE = Buffer(vazir1, telegram_reactions, 16, 10, 600, 10000, 100000, 10000000, 200000000);
 ```
 
-### 7. Prepare Input Channels
+### 5. Prepare Input Channels
 
-Edit `input/channels.json`:
+Use the panel's **Channels** page, or edit `input/channels.json`:
 
 ```json
 {
@@ -225,7 +289,7 @@ Edit `input/channels.json`:
 }
 ```
 
-### 8. Create Telegram Sessions
+### 6. Create Telegram Sessions
 
 Run the session creator to authenticate your Telegram accounts:
 
@@ -238,6 +302,8 @@ This will prompt you to enter phone numbers and verification codes for each sess
 ---
 
 ## Usage
+
+The simplest way is the [web panel](#web-control-panel): `python3 -m web`, then **Run & Monitor → Start**. The command-line entry points below still work.
 
 ### Run the Full Pipeline
 
@@ -261,7 +327,7 @@ python3 get_posts.py --channels input/channels.json --days 3
 | Argument | Default | Description |
 |---|---|---|
 | `--channels` | `input/channels.json` | Path to the channels JSON file |
-| `--days` | `1` | Number of past days to scrape posts for |
+| `--days` | `posts.days` (1) | Number of past days to scrape posts for |
 
 ### Run Comments & Reactions Scraper Only
 
@@ -273,7 +339,9 @@ python3 get_comments_reactions.py --limit 36
 
 | Argument | Default | Description |
 |---|---|---|
-| `--limit` | `36` | Maximum number of comments to fetch per post |
+| `--limit` | `comments.limit` (36) | Maximum number of comments to fetch per post |
+| `--mode` | `tmux` | `tmux`: detached tmux sessions. `subprocess`: run workers here, wait, log each to `--log-dir` |
+| `--log-dir` | `logs/workers` | Worker log directory (subprocess mode) |
 
 ---
 
@@ -339,7 +407,13 @@ python3 get_comments_reactions.py --limit 36
 docker compose up -d
 ```
 
-This starts both the ClickHouse database and the scraper application. See `Dockerfile` and `docker-compose.yml` for details.
+This starts ClickHouse, the scraper (`app`, runs `run_full_scraper.sh`) and the control panel (`web`) on **http://localhost:8000**. The image builds the React frontend in a Node stage, so you don't need Node on the host. Set `WEB_PASSWORD` in `docker-compose.yml` before exposing port 8000. See `Dockerfile` and `docker-compose.yml` for details.
+
+To run only the database and the panel (and start scrapes from the UI):
+
+```bash
+docker compose up -d clickhouse web
+```
 
 ### Run Interactively (for session creation)
 
@@ -353,9 +427,10 @@ docker compose run --rm app python3 session/create_esssion.py
 
 | File | Purpose |
 |---|---|
-| `config.py` | Telegram API ID/hash, HTTP proxy, MTProto proxy, session count |
-| `fetch_tools/configDB.py` | ClickHouse HTTP URL, auth credentials, database name |
+| `input/settings.json` | All settings: Telegram API, proxies, ClickHouse, scraping parameters (edit via the panel) |
+| `settings.py` | Defaults, validation and env-var overrides for the above |
 | `input/channels.json` | List of Telegram channel URLs to scrape |
+| `logs/runs/<run-id>/` | Status, summary and logs of each run started from the panel |
 
 ---
 

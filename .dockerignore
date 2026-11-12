@@ -21,3 +21,10 @@ logs/
 # Docker volumes
 clickhouse_data/
 clickhouse_logs/
+
+# Frontend build artifacts (built inside the image)
+frontend/node_modules/
+frontend/dist/
+
+# Local settings (mounted at runtime)
+input/settings.json

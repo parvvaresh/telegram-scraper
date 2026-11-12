@@ -33,3 +33,7 @@ Thumbs.db
 # Docker volumes
 clickhouse_data/
 clickhouse_logs/
+
+# Local settings edited from the web panel (contains credentials)
+input/settings.json
+input/*.tmp

@@ -5,6 +5,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 from multiprocessing import Manager
 from utils.worker_posts import worker, load_channels_from_json
+from settings import load_settings
 
 # ---------- Logging ----------
 logging.basicConfig(
@@ -14,9 +15,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------- Config ----------
-BATCH_SIZE = 1000
-MAX_THREADS = 64
-MAX_PARALLEL_BATCHES = 4
+_posts_cfg = load_settings()["posts"]
+BATCH_SIZE = _posts_cfg["batch_size"]
+MAX_THREADS = _posts_cfg["max_threads"]
+MAX_PARALLEL_BATCHES = _posts_cfg["max_parallel_batches"]
 OUTPUT_DIR = 'output/batches'
 
 
@@ -109,7 +111,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Multi-Batch Parallel Telegram Scraper")
     parser.add_argument('--channels', type=str, default='input/channels.json', help='Path to channel list')
-    parser.add_argument('--days', type=int, default=1, help='How many days of posts to fetch')
+    parser.add_argument('--days', type=int, default=_posts_cfg['days'], help='How many days of posts to fetch')
     args = parser.parse_args()
 
     main(channels_file=args.channels, days=args.days)
