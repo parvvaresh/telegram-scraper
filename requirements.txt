@@ -6,3 +6,5 @@ sqlalchemy>=2.0.0
 clickhouse-sqlalchemy
 requests>=2.31.0
 lxml
+fastapi>=0.110
+uvicorn>=0.29

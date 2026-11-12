@@ -7,26 +7,22 @@ from telethon import connection
 
 from fetch_tools.reactions import fetch_and_update_reactions
 from fetch_tools.comments import fetch_and_insert_comments
-from config import api_hash, api_id, MTPROTO_PROXY
+from config import api_hash, api_id, MTPROTO_PROXY_TUPLE, TELETHON_TIMEOUT
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 async def process(session_path, batch_file, limit):
     session_name = session_path.replace('.session', '')
-    client = TelegramClient(
-        session_name,
-        api_id,
-        api_hash,
-        connection=connection.ConnectionTcpMTProxyAbridged,
-        proxy=(
-            MTPROTO_PROXY['server'],
-            MTPROTO_PROXY['port'],
-            MTPROTO_PROXY['secret']
-        )
+    proxy_kwargs = (
+        {"connection": connection.ConnectionTcpMTProxyAbridged, "proxy": MTPROTO_PROXY_TUPLE}
+        if MTPROTO_PROXY_TUPLE else {}
     )
+    client = TelegramClient(session_name, api_id, api_hash, timeout=TELETHON_TIMEOUT, **proxy_kwargs)
 
-    await client.start()
+    await client.connect()
+    if not await client.is_user_authorized():
+        raise RuntimeError(f"Session {session_path} is not authorized. Run session/create_esssion.py first.")
     logger.info(f"Client started for session: {session_path}")
 
     with open(batch_file, 'r', encoding='utf-8') as f:
@@ -39,6 +35,10 @@ async def process(session_path, batch_file, limit):
             grouped.setdefault(channel, []).append(int(msgid))
         except ValueError:
             logger.warning(f"Invalid msgid (not int): {msgid}")
+
+    total = sum(len(v) for v in grouped.values())
+    done = 0
+    logger.info(f"📊 progress {done}/{total} messages")
 
     for channel, msgids in grouped.items():
         logger.info(f"Processing {len(msgids)} messages from: {channel}")
@@ -61,6 +61,9 @@ async def process(session_path, batch_file, limit):
         except Exception as e:
             logger.warning(f"Comments error on {channel}: {e}")
 
+        done += len(msgids)
+        logger.info(f"📊 progress {done}/{total} messages")
+
     await client.disconnect()
     logger.info("🔚 Finished processing batch.")
 
@@ -76,3 +79,4 @@ if __name__ == '__main__':
         asyncio.run(process(args.session, args.batch, args.limit))
     except Exception as e:
         logger.error(f"Fatal error: {e}")
+        raise SystemExit(1)

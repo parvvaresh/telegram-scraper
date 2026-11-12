@@ -1,52 +1,32 @@
-# -----------------------------
-# Telegram API credentials
-# -----------------------------
-api_id = 0  # Set your API ID from my.telegram.org
-api_hash = 'YOUR_API_HASH'  # Set your API hash from my.telegram.org
+# -----------------------------------------------------------------------------
+# Scraper configuration.
+#
+# Values are NOT edited here anymore: they come from input/settings.json, which
+# you can edit from the web panel (`python3 -m web`) or by hand.
+# See settings.py for the full list of keys and their defaults.
+# -----------------------------------------------------------------------------
+from settings import load_settings, http_proxy_url, http_proxies, mtproto_proxy
+
+_settings = load_settings()
+
+# Telegram API credentials (from my.telegram.org)
+api_id = _settings["telegram"]["api_id"]
+api_hash = _settings["telegram"]["api_hash"]
 
 # Connection timeout for network operations (in seconds)
-TELETHON_TIMEOUT = 30
+TELETHON_TIMEOUT = _settings["telegram"]["timeout"]
 
-# -----------------------------
-# HTTP Proxy Configuration
-# -----------------------------
+# HTTP proxy (used to scrape t.me/s/ pages)
+HTTP_PROXY_HOST = _settings["http_proxy"]["host"]
+HTTP_PROXY_PORT = _settings["http_proxy"]["port"]
+HTTP_PROXY_USER = _settings["http_proxy"]["user"]
+HTTP_PROXY_PASS = _settings["http_proxy"]["password"]
+HTTP_PROXY_URL = http_proxy_url(_settings)
+proxies = http_proxies(_settings)
 
-# These are the credentials and IP settings for the HTTP proxy
-HTTP_PROXY_HOST = ''                 # Proxy IP address
-HTTP_PROXY_PORT = 0                  # Proxy port
-HTTP_PROXY_USER = ''                 # Proxy username
-HTTP_PROXY_PASS = ''                 # Proxy password
+# MTProto proxy (used by Telethon). MTPROTO_PROXY_TUPLE is None when not configured.
+MTPROTO_PROXY = dict(_settings["mtproto_proxy"])
+MTPROTO_PROXY_TUPLE = mtproto_proxy(_settings)
 
-# This builds a full HTTP proxy URL using the credentials
-HTTP_PROXY_URL = (
-    f"http://{HTTP_PROXY_USER}:{HTTP_PROXY_PASS}@{HTTP_PROXY_HOST}:{HTTP_PROXY_PORT}"
-    if HTTP_PROXY_HOST and HTTP_PROXY_PORT and HTTP_PROXY_USER and HTTP_PROXY_PASS
-    else ''
-)
-
-# This dictionary can be used with libraries like requests, aiohttp, etc.
-proxies = (
-    {
-        'http': HTTP_PROXY_URL,    # Proxy for HTTP traffic
-        'https': HTTP_PROXY_URL,   # Proxy for HTTPS traffic
-    }
-    if HTTP_PROXY_URL
-    else {}
-)
-
-# -----------------------------
-# MTProto Proxy Configuration
-# -----------------------------
-
-# This section sets up the Telegram-specific MTProto proxy
-MTPROTO_PROXY = {
-    'server': '',                 # MTProto proxy server address
-    'port': 0,                    # MTProto proxy port
-    'secret': ''                  # Secret key in hex format
-}
-
-
-# -----------------------------
-# Number of sessions you want to create
-# -----------------------------
-NUM_SESSIONS = 4
+# Number of Telethon sessions create_esssion.py should create
+NUM_SESSIONS = _settings["telegram"]["num_sessions"]

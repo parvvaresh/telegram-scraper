@@ -69,4 +69,4 @@ def worker(channel_with_index: Tuple[int, int, str], days: int) -> List[str]:
 
     except Exception as e:
         logger.exception(f"[✗] ({index}/{total}) Error in @{raw_channel}: {e}")
-        return channel, []
+        return raw_channel, []

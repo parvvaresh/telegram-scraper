@@ -4,7 +4,8 @@
 #
 # Services:
 #   - clickhouse: ClickHouse database for storing posts, comments, reactions
-#   - app: The Telegram scraper application
+#   - app: The Telegram scraper application (runs run_full_scraper.sh)
+#   - web: Control panel on http://localhost:8000 (config, run, monitor, history)
 #
 # Usage:
 #   docker compose up -d              # Start all services
@@ -56,15 +57,40 @@ services:
     volumes:
       # Persist session files so you don't need to re-authenticate
       - ./session:/app/session
-      # Persist input configuration
+      # Persist input configuration (channels.json + settings.json)
       - ./input:/app/input
       # Persist output data
       - ./output:/app/output
       # Persist logs
       - ./logs:/app/logs
-      # Mount config for easy editing without rebuilding
-      - ./config.py:/app/config.py
-      - ./fetch_tools/configDB.py:/app/fetch_tools/configDB.py
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram_scraper_web
+    command: ["python3", "-m", "web"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      WEB_HOST: "0.0.0.0"
+      WEB_PORT: "8000"
+      # Set a password before exposing the panel beyond your machine
+      WEB_USER: admin
+      WEB_PASSWORD: ""
+      CLICKHOUSE_HTTP_URL: "http://clickhouse:8123/"
+      CLICKHOUSE_USER: reza
+      CLICKHOUSE_PASSWORD: "1234"
+      CLICKHOUSE_DB: vazir1
+    volumes:
+      - ./session:/app/session
+      - ./input:/app/input        # channels.json + settings.json
+      - ./output:/app/output
+      - ./logs:/app/logs          # run history lives in logs/runs/
     restart: unless-stopped
 
 volumes:

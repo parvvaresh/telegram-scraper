@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from salnama import taghvim
 from config import proxies
+from settings import load_settings
 from .configDB import HEADERS
 from .utils import insert_clickhouse_batch, create_http_session, _parse_post_element
 # -------------------- Logger Configuration --------------------
@@ -17,8 +18,11 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(m
 logger = logging.getLogger(__name__)
 
 # -------------------- Constants --------------------
-BATCH_SIZE = 50
-DELAY_RANGE = (1.0, 2.5)
+_posts_cfg = load_settings()["posts"]
+BATCH_SIZE = _posts_cfg["insert_batch_size"]
+DELAY_RANGE = (_posts_cfg["delay_min"], _posts_cfg["delay_max"])
+MAX_PAGES = _posts_cfg["max_pages"]
+HTTP_MAX_RETRIES = _posts_cfg["http_max_retries"]
 jalali_calendar = taghvim.Jalali()
 
 
@@ -52,7 +56,6 @@ def fetch_and_insert_posts(channel: str, days: int = 3) -> Tuple[str, List[str]]
     repeat_count = 0
     MAX_REPEAT = 3  # Max consecutive repeats of same msgid before break
 
-    MAX_PAGES = 500
     page_count = 0
 
     logger.info(f"🚀 Starting scrape for channel: {channel} | Range: last {days} days")
@@ -67,15 +70,25 @@ def fetch_and_insert_posts(channel: str, days: int = 3) -> Tuple[str, List[str]]
 
         # Retry with exponential backoff on HTTP errors
         backoff = 1
+        attempt = 0
+        response = None
         while True:
             try:
                 response = http.get(url, headers=HEADERS, timeout=30)
                 response.raise_for_status()
                 break
             except requests.RequestException as e:
+                attempt += 1
+                if attempt > HTTP_MAX_RETRIES:
+                    logger.error(f"HTTP error fetching {url}: {e} | Giving up after {attempt} attempts")
+                    response = None
+                    break
                 logger.warning(f"HTTP error fetching {url}: {e} | Retrying in {backoff}s")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 60)
+
+        if response is None:
+            break
 
         soup = BeautifulSoup(response.text, 'html.parser')
         elements = soup.find_all('div', class_='tgme_widget_message_wrap')
